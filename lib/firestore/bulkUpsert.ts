@@ -4,8 +4,10 @@
 
 import type { Firestore } from "firebase-admin/firestore";
 import type { Timestamp } from "firebase-admin/firestore";
-import type { Bucket } from "firebase-admin/storage";
+import { getStorage } from "firebase-admin/storage";
 import type { SnapshotItem, SnapshotItemSource } from "@/lib/admin/import-types";
+
+type StorageBucket = ReturnType<ReturnType<typeof getStorage>["bucket"]>;
 
 const FIRESTORE_DOC_LIMIT_BYTES = 1_048_576;
 const SAFE_LIMIT = Math.floor(FIRESTORE_DOC_LIMIT_BYTES * 0.85);
@@ -36,7 +38,7 @@ export interface ItemToUpsert {
  */
 export async function upsertSnapshotItem(
   db: Firestore,
-  bucket: Bucket | null,
+  bucket: StorageBucket | null,
   asOfDate: string,
   item: ItemToUpsert,
   updatedAt: Timestamp
