@@ -7,6 +7,7 @@ export const authGateStyles = {
     "fixed inset-0 z-[9999] bg-black/55",
   modal:
     "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] w-[calc(100vw-48px)] max-w-[980px] h-[520px] max-h-[calc(100vh-48px)] rounded-[10px] bg-white overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.35)] grid grid-cols-1 md:grid-cols-[1.05fr_0.95fr]",
+  grid: "grid grid-cols-1 md:grid-cols-[1.05fr_0.95fr]",
   closeBtn:
     "absolute right-3 top-3 z-10 w-10 h-10 flex items-center justify-center rounded-lg text-[#6b7280] hover:text-[#111827] hover:bg-gray-100 transition-colors",
   left:
