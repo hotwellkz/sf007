@@ -123,6 +123,25 @@ function getApp(): App {
 }
 
 /**
+ * Env var presence only (no secret values). Use for health/diagnostics.
+ */
+export function getEnvDiagnostics(): {
+  hasProjectId: boolean;
+  hasClientEmail: boolean;
+  hasPrivateKey: boolean;
+} {
+  const projectIdEnv =
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const rawKey = process.env.FIREBASE_PRIVATE_KEY;
+  return {
+    hasProjectId: Boolean(projectIdEnv?.trim()),
+    hasClientEmail: Boolean(clientEmail?.trim()),
+    hasPrivateKey: Boolean(rawKey?.trim()),
+  };
+}
+
+/**
  * Returns credential source used for initialization, or "none" if not yet initialized.
  */
 export function getCredentialSource(): CredentialSource {

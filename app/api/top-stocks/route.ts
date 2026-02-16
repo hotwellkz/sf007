@@ -23,6 +23,17 @@ function jsonErr(message: string, status: number) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
 
+function logError(route: string, e: unknown) {
+  const err = e instanceof Error ? e : new Error(String(e));
+  const code = (e as { code?: string })?.code;
+  console.error(`[${route}]`, {
+    name: err.name,
+    message: err.message,
+    code: code ?? "unknown",
+    stack: err.stack,
+  });
+}
+
 /** Fetch from internal ranking API (Danelfin). Uses request origin for same-host call. */
 async function fetchRankingApi(
   asOfDate: string,
@@ -186,6 +197,7 @@ export async function GET(request: NextRequest) {
 
     return jsonErr("Invalid source", 400);
   } catch (e) {
+    logError("api/top-stocks", e);
     if (e instanceof FirebaseAdminInitError) {
       return NextResponse.json(
         {

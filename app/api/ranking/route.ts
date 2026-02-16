@@ -24,6 +24,17 @@ function log(msg: string, meta?: Record<string, unknown>) {
   console.log(`[ranking] ${payload}`);
 }
 
+function logApiError(route: string, e: unknown) {
+  const err = e instanceof Error ? e : new Error(String(e));
+  const code = (e as { code?: string })?.code;
+  console.error(`[${route}]`, {
+    name: err.name,
+    message: err.message,
+    code: code ?? "unknown",
+    stack: err.stack,
+  });
+}
+
 export async function GET(request: NextRequest) {
   const key = process.env.DANELFIN_API_KEY;
   const hasKey = Boolean(key?.trim());
@@ -43,7 +54,7 @@ export async function GET(request: NextRequest) {
   if (!hasKey) {
     log("missing env DANELFIN_API_KEY");
     return NextResponse.json(
-      { error: "API key not configured. Set DANELFIN_API_KEY in .env.local and restart the dev server." },
+      { error: "API key not configured. Set DANELFIN_API_KEY in environment (e.g. Netlify env vars) and redeploy." },
       { status: 500 }
     );
   }
@@ -54,6 +65,26 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  try {
+    return await handleRankingRequest(request, key!, searchParams);
+  } catch (e) {
+    logApiError("api/ranking", e);
+    const message = e instanceof Error ? e.message : "Internal server error";
+    return NextResponse.json(
+      { error: message },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleRankingRequest(
+  request: NextRequest,
+  key: string,
+  searchParams: URLSearchParams
+): Promise<NextResponse> {
+  const ticker = searchParams.get("ticker");
+  const dateParam = searchParams.get("date");
 
   const params = new URLSearchParams();
   if (ticker) params.set("ticker", ticker);
@@ -84,7 +115,7 @@ export async function GET(request: NextRequest) {
     let res: Response;
     try {
       res = await fetch(url, {
-        headers: { "x-api-key": key! },
+        headers: { "x-api-key": key },
         next: { revalidate: 3600 },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
@@ -189,7 +220,7 @@ export async function GET(request: NextRequest) {
     }
     if (res.status === 401) {
       return NextResponse.json(
-        { error: "Invalid API key. Check DANELFIN_API_KEY in .env.local." },
+        { error: "Invalid API key. Check DANELFIN_API_KEY in environment." },
         { status: 502 }
       );
     }

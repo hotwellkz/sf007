@@ -48,6 +48,16 @@ From Firebase Console → Project settings → Service accounts → Generate new
 
 If you see `ok: false` and `source: "none"`, one of the three env vars is missing or invalid (check spelling and that the private key is the full PEM block with `\n`).
 
+## Redeploy and verify
+
+1. **Redeploy:** Push to the branch connected to Netlify, or in Netlify: Deploys → Trigger deploy → Deploy site.
+2. **Node:** Netlify uses Node 18 (set in `netlify.toml` and `.nvmrc`). Ensure no override with an older version.
+3. **Verify health:** Open in browser:
+   - `https://YOUR-SITE.netlify.app/api/admin/health`
+   - Expect JSON: `{ "ok": true, "hasProjectId": true, "hasClientEmail": true, "hasPrivateKey": true, "nodeVersion": "v18.x.x", "timestamp": "...", "credentialSource": "env-vars", "projectId": "..." }`.
+   - If `ok: false`, check `hasProjectId`, `hasClientEmail`, `hasPrivateKey` to see which env var is missing; fix in Site settings → Environment variables → Redeploy.
+4. **Verify top-stocks:** Open `https://YOUR-SITE.netlify.app/api/top-stocks?source=db` (or with `asOfDate=YYYY-MM-DD`). Expect JSON with `ok: true` and `items` array, or `ok: false` with `error` and `hint` (no credentials).
+
 ## UNAUTHENTICATED (16) in production
 
 - **From API (e.g. /api/top-stocks):** Server uses Firebase Admin. Set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (and optionally `FIREBASE_STORAGE_BUCKET`). If Admin is not configured, the API returns 503 with a hint instead of a raw gRPC message.
