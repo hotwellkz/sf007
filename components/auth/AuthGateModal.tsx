@@ -99,9 +99,8 @@ export function AuthGateModal({ open, onClose }: AuthGateModalProps) {
           <X className="h-5 w-5" />
         </button>
 
-        <div className={authGateStyles.grid}>
-          {/* Left: blue promo panel */}
-          <div className={authGateStyles.left}>
+        {/* Left: blue promo panel */}
+        <div className={authGateStyles.left}>
             <h2 className={authGateStyles.leftTitle}>
               StockForge Best Stocks* vs. S&P 500
             </h2>
@@ -122,10 +121,10 @@ export function AuthGateModal({ open, onClose }: AuthGateModalProps) {
             <p className={authGateStyles.footnote}>
               *Strategy description text in small font, similar density to the reference. Keep under 5 lines, allow scrolling if needed. Backtested results. Not financial advice. Your capital is at risk.
             </p>
-          </div>
+        </div>
 
-          {/* Right: form panel */}
-          <div className={authGateStyles.right}>
+        {/* Right: form panel */}
+        <div className={authGateStyles.right}>
             <h1 id="auth-gate-title" className={authGateStyles.rightHeader}>
               Get the Top 10 Stocks to Buy for FREE
             </h1>
@@ -233,7 +232,6 @@ export function AuthGateModal({ open, onClose }: AuthGateModalProps) {
               </Link>
               .
             </p>
-          </div>
         </div>
       </div>
     </>
