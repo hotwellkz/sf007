@@ -68,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
+      // COOP warning in console ("policy would block the window.closed call") is from Firebase
+      // popup auth; it does not break sign-in. To avoid it, use redirect flow (signInWithRedirect) instead.
       const res = await signInWithPopup(auth, new GoogleAuthProvider());
       await res.user.reload();
       const updated = auth.currentUser;

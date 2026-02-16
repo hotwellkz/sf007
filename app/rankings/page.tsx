@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { getTopStocks, getTradeIdeas } from "@/lib/api";
+import { getTopStocksUnified, getTradeIdeas } from "@/lib/api";
 import type { RankingRow } from "@/lib/types";
 import { rankingResponseToRows } from "@/lib/ranking-mapping";
 import { addTicker } from "@/lib/portfolio";
@@ -76,9 +76,11 @@ function RankingsContent() {
   const toast = useToast();
   const tabParam = (searchParams.get("tab") || "stocks") as TabId;
   const marketParam = searchParams.get("market") || "usa";
+  const sourceParam = (searchParams.get("source") || "auto") as "auto" | "db" | "api";
 
   const [tab, setTab] = useState<TabId>(tabParam);
   const [market, setMarket] = useState(marketParam);
+  const [dataSource, setDataSource] = useState<"auto" | "db" | "api">(sourceParam);
   const [innerTab, setInnerTab] = useState("top-popular");
   const [buyTrackRecord, setBuyTrackRecord] = useState(false);
   const [sellTrackRecord, setSellTrackRecord] = useState(false);
@@ -87,15 +89,18 @@ function RankingsContent() {
 
   const [rows, setRows] = useState<RankingRow[]>([]);
   const [rankingDateKey, setRankingDateKey] = useState<string>("");
+  const [sourceUsed, setSourceUsed] = useState<"auto" | "db" | "api" | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
   const updateUrl = useCallback(
-    (newTab: TabId, newMarket: string) => {
+    (newTab: TabId, newMarket: string, newSource?: "auto" | "db" | "api") => {
       const params = new URLSearchParams();
       params.set("tab", newTab);
       params.set("market", newMarket);
+      if (newSource && newSource !== "auto") params.set("source", newSource);
+      else if (newSource === "auto") params.delete("source");
       router.replace(`/rankings?${params.toString()}`, { scroll: false });
     },
     [router]
@@ -106,17 +111,17 @@ function RankingsContent() {
       const t = v as TabId;
       setTab(t);
       setPage(0);
-      updateUrl(t, market);
+      updateUrl(t, market, dataSource);
     },
-    [market, updateUrl]
+    [market, dataSource, updateUrl]
   );
 
   const handleMarketChange = useCallback(
     (id: string) => {
       setMarket(id);
-      updateUrl(tab, id);
+      updateUrl(tab, id, dataSource);
     },
-    [tab, updateUrl]
+    [tab, dataSource, updateUrl]
   );
 
   const fetchData = useCallback(() => {
@@ -125,22 +130,26 @@ function RankingsContent() {
     const date = new Date().toISOString().slice(0, 10);
 
     if (tab === "stocks") {
-      getTopStocks(date, "stock", {
-        buyTrackRecord: buyTrackRecord || undefined,
-        sellTrackRecord: sellTrackRecord || undefined,
-      })
+      getTopStocksUnified(date, dataSource)
         .then((data) => {
-          const dateKey = Object.keys(data)[0] ?? date;
-          setRankingDateKey(dateKey);
-          setRows(rankingResponseToRows(data));
+          setRankingDateKey(data.asOfDate);
+          setSourceUsed(data.sourceUsed);
+          setRows(data.items);
         })
-        .catch((e) => setError(e.message || "Failed to load"))
+        .catch((e) => {
+          const msg = e.message || "Failed to load";
+          setError(msg);
+          if ((e as { isRateLimit?: boolean }).isRateLimit) {
+            setError("Rate limit exceeded. Try switching to DB mode below to use cached data.");
+          }
+        })
         .finally(() => setLoading(false));
     } else if (tab === "etfs") {
-      getTopStocks(date, "etf")
+      getTradeIdeas(date)
         .then((data) => {
           const dateKey = Object.keys(data)[0] ?? date;
           setRankingDateKey(dateKey);
+          setSourceUsed(null);
           setRows(rankingResponseToRows(data));
         })
         .catch((e) => setError(e.message || "Failed to load"))
@@ -150,6 +159,7 @@ function RankingsContent() {
         .then((data) => {
           const dateKey = Object.keys(data)[0] ?? date;
           setRankingDateKey(dateKey);
+          setSourceUsed(null);
           setRows(rankingResponseToRows(data));
         })
         .catch((e) => setError(e.message || "Failed to load"))
@@ -157,14 +167,16 @@ function RankingsContent() {
     } else {
       setRows([]);
       setRankingDateKey(date);
+      setSourceUsed(null);
       setLoading(false);
     }
-  }, [tab, buyTrackRecord, sellTrackRecord]);
+  }, [tab, dataSource, buyTrackRecord, sellTrackRecord]);
 
   useEffect(() => {
     setTab(tabParam);
     setMarket(marketParam);
-  }, [tabParam, marketParam]);
+    setDataSource(sourceParam);
+  }, [tabParam, marketParam, sourceParam]);
 
   useEffect(() => {
     fetchData();
@@ -262,6 +274,37 @@ function RankingsContent() {
             {tab === "stocks" && (
               <div className="mb-6">
                 <InnerStocksTabs value={innerTab} onValueChange={setInnerTab} />
+              </div>
+            )}
+
+            {/* Data source switch (Top Stocks only) */}
+            {tab === "stocks" && (
+              <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#E5E7EB] bg-white p-2">
+                <span className="text-sm font-medium text-gray-700">Data source:</span>
+                {(["auto", "db", "api"] as const).map((src) => (
+                  <button
+                    key={src}
+                    type="button"
+                    onClick={() => {
+                      setDataSource(src);
+                      updateUrl(tab, market, src);
+                      setPage(0);
+                      fetchData();
+                    }}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize ${
+                      dataSource === src
+                        ? "bg-[#EAF4FF] text-[#1D74C6]"
+                        : "text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {src}
+                  </button>
+                ))}
+                {sourceUsed && (
+                  <span className="ml-2 text-xs text-gray-500">
+                    (using: {sourceUsed})
+                  </span>
+                )}
               </div>
             )}
 
@@ -370,8 +413,31 @@ function RankingsContent() {
               </p>
 
               {error && (
-                <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
                   {error}
+                  {tab === "stocks" && error.includes("Rate limit") && (
+                    <p className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDataSource("db");
+                          updateUrl(tab, market, "db");
+                          fetchData();
+                        }}
+                        className="font-medium text-red-800 underline hover:no-underline focus:outline-none focus:underline"
+                      >
+                        Switch to DB mode
+                      </button>
+                      {" "}to use cached snapshot data.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => fetchData()}
+                    className="ml-3 mt-2 inline-block font-medium text-red-800 underline hover:no-underline focus:outline-none focus:underline"
+                  >
+                    Retry
+                  </button>
                 </div>
               )}
 

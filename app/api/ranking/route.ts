@@ -17,14 +17,37 @@ function previousDays(fromDate: string, count: number): string[] {
   return dates;
 }
 
+/** Log on server only; never log secrets. */
+function log(msg: string, meta?: Record<string, unknown>) {
+  const payload = meta ? `${msg} ${JSON.stringify(meta)}` : msg;
+  // eslint-disable-next-line no-console -- server diagnostic
+  console.log(`[ranking] ${payload}`);
+}
+
 export async function GET(request: NextRequest) {
   const key = process.env.DANELFIN_API_KEY;
-  if (!key) {
-    return NextResponse.json({ error: "API key not configured" }, { status: 500 });
-  }
+  const hasKey = Boolean(key?.trim());
+
   const { searchParams } = new URL(request.url);
   const ticker = searchParams.get("ticker");
   const dateParam = searchParams.get("date");
+
+  log("GET", {
+    hasKey,
+    hasDate: Boolean(dateParam),
+    hasTicker: Boolean(ticker),
+    asset: searchParams.get("asset") ?? null,
+    buy_track_record: searchParams.get("buy_track_record") ?? null,
+  });
+
+  if (!hasKey) {
+    log("missing env DANELFIN_API_KEY");
+    return NextResponse.json(
+      { error: "API key not configured. Set DANELFIN_API_KEY in .env.local and restart the dev server." },
+      { status: 500 }
+    );
+  }
+
   if (!ticker && !dateParam) {
     return NextResponse.json(
       { error: "Either ticker or date is required" },
@@ -50,30 +73,43 @@ export async function GET(request: NextRequest) {
     : [new Date().toISOString().slice(0, 10)];
 
   const FETCH_TIMEOUT_MS = 20_000;
+  let lastUpstreamStatus: number | null = null;
+  let lastUpstreamBody = "";
 
   for (const date of datesToTry) {
     const q = new URLSearchParams(params);
     q.set("date", date);
     const url = `${DANELFIN_BASE}/ranking?${q.toString()}`;
+    const start = Date.now();
     let res: Response;
     try {
       res = await fetch(url, {
-        headers: { "x-api-key": key },
+        headers: { "x-api-key": key! },
         next: { revalidate: 3600 },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
-    } catch {
+    } catch (err) {
+      const elapsed = Date.now() - start;
+      log("fetch error", { date, elapsed, err: err instanceof Error ? err.message : "unknown" });
       continue;
     }
+
+    lastUpstreamStatus = res.status;
+    const elapsed = Date.now() - start;
+
     if (res.ok) {
       const data = await res.json();
       const dateKey = Object.keys(data)[0];
-      if (!dateKey) return NextResponse.json(data);
+      if (!dateKey) {
+        return NextResponse.json(data);
+      }
 
       const byTicker = data[dateKey] as Record<string, Record<string, unknown>>;
       const allTickers = Object.keys(byTicker);
       const MAX_TICKERS_FOR_DELTA = 120;
       const tickersForDelta = allTickers.slice(0, MAX_TICKERS_FOR_DELTA);
+
+      log("upstream ok", { date: dateKey, tickers: allTickers.length, elapsed });
 
       const deltas = await Promise.all(
         tickersForDelta.map(async (t) => {
@@ -81,7 +117,7 @@ export async function GET(request: NextRequest) {
             const currentAiscore = Number(byTicker[t]?.aiscore);
             const prevAiscore = Number.isNaN(currentAiscore)
               ? null
-              : await getPrevAiScore(t, dateKey, key);
+              : await getPrevAiScore(t, dateKey, key!);
             const aiScoreDelta =
               prevAiscore != null && !Number.isNaN(currentAiscore)
                 ? Math.round(currentAiscore - prevAiscore)
@@ -140,16 +176,38 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json(data);
     }
+
+    const bodyText = await res.text();
+    lastUpstreamBody = bodyText.slice(0, 200);
+    log("upstream non-ok", { date, status: res.status, elapsed, bodyPreview: lastUpstreamBody.slice(0, 80) });
+
     if (res.status === 400 || res.status === 403) {
-      const text = await res.text();
       return NextResponse.json(
-        { error: text || res.statusText },
+        { error: bodyText || res.statusText },
         { status: res.status }
+      );
+    }
+    if (res.status === 401) {
+      return NextResponse.json(
+        { error: "Invalid API key. Check DANELFIN_API_KEY in .env.local." },
+        { status: 502 }
+      );
+    }
+    if (res.status === 429) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded. Try again later." },
+        { status: 502 }
       );
     }
   }
 
-  // No data for any date: return 200 with empty ranking so UI can show empty table
-  const fallbackDate = dateParam || new Date().toISOString().slice(0, 10);
-  return NextResponse.json({ [fallbackDate]: {} });
+  log("no data for any date", { lastUpstreamStatus, lastBodyPreview: lastUpstreamBody.slice(0, 80) });
+  return NextResponse.json(
+    {
+      error: lastUpstreamStatus != null
+        ? `Upstream API returned ${lastUpstreamStatus}. Check server logs for details.`
+        : "Upstream API unavailable (timeout or network). Try again.",
+    },
+    { status: 502 }
+  );
 }

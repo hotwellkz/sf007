@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getTopStocks, getTradeIdeas } from "@/lib/api";
 import type { RankingApiResponse, RankingRow } from "@/lib/types";
 import { rankingResponseToRows } from "@/lib/ranking-mapping";
@@ -30,51 +30,42 @@ export function RankingSection() {
   const [dateLabel] = useState(formatRankingDate());
   const [market, setMarket] = useState("usa");
 
-  useEffect(() => {
+  const fetchData = useCallback(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
     const date = new Date().toISOString().slice(0, 10);
 
+    const done = (data: Parameters<typeof rankingResponseToRows>[0] | null, err: string | null) => {
+      if (!cancelled) {
+        setRows(data ? rankingResponseToRows(data) : []);
+        setError(err);
+        setLoading(false);
+      }
+    };
+
     if (tab === "stocks") {
       getTopStocks(date, "stock")
-        .then((data) => {
-          if (!cancelled) setRows(rankingResponseToRows(data));
-        })
-        .catch((e) => {
-          if (!cancelled) setError(e.message || "Failed to load");
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
+        .then((data) => done(data, null))
+        .catch((e) => done(null, e.message || "Failed to load"));
     } else if (tab === "etfs") {
       getTopStocks(date, "etf")
-        .then((data) => {
-          if (!cancelled) setRows(rankingResponseToRows(data));
-        })
-        .catch((e) => {
-          if (!cancelled) setError(e.message || "Failed to load");
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
+        .then((data) => done(data, null))
+        .catch((e) => done(null, e.message || "Failed to load"));
     } else if (tab === "trade-ideas") {
       getTradeIdeas(date)
-        .then((data) => {
-          if (!cancelled) setRows(rankingResponseToRows(data));
-        })
-        .catch((e) => {
-          if (!cancelled) setError(e.message || "Failed to load");
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
+        .then((data) => done(data, null))
+        .catch((e) => done(null, e.message || "Failed to load"));
     } else {
       setRows([]);
       setLoading(false);
     }
   }, [tab]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   return (
     <section id="ranking" className="bg-white px-6 py-14">
@@ -97,6 +88,7 @@ export function RankingSection() {
             showFooterLink={true}
             footerLinkHref="/rankings?tab=stocks&market=US"
             footerLinkText="See the full US Popular Stocks ranking"
+            onRetry={fetchData}
           />
         </div>
 
