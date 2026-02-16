@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
-import { getFirestore, getStorageBucket } from "@/lib/firebaseAdmin";
+import { getFirestore, getStorageBucket, FirebaseAdminInitError } from "@/lib/firebaseAdmin";
 import { getAppConfig } from "@/lib/top-stocks/config";
 import { snapshotDocToRow } from "@/lib/top-stocks/normalize";
 import { rankingResponseToRows } from "@/lib/ranking-mapping";
@@ -186,6 +186,16 @@ export async function GET(request: NextRequest) {
 
     return jsonErr("Invalid source", 400);
   } catch (e) {
+    if (e instanceof FirebaseAdminInitError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Firebase Admin not configured.",
+          hint: e.hint ?? "Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY on Netlify. See docs/NETLIFY_ENV.md.",
+        },
+        { status: 503 }
+      );
+    }
     const message = e instanceof Error ? e.message : "Internal server error";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
