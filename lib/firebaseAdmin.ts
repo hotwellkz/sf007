@@ -35,51 +35,6 @@ function getApp(): App {
     return adminApp;
   }
 
-  const gacPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (gacPath) {
-    const absolutePath = path.isAbsolute(gacPath) ? gacPath : path.resolve(process.cwd(), gacPath);
-    try {
-      const raw = fs.readFileSync(absolutePath, "utf8");
-      const serviceAccount = JSON.parse(raw) as {
-        project_id?: string;
-        client_email?: string;
-        private_key?: string;
-      };
-      if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
-        throw new FirebaseAdminInitError(
-          "Service account JSON missing project_id, client_email, or private_key.",
-          "gac-file",
-          `Check file: ${absolutePath}`
-        );
-      }
-      const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || undefined;
-      adminApp = initializeApp({
-        credential: cert({
-          projectId: serviceAccount.project_id,
-          clientEmail: serviceAccount.client_email,
-          privateKey: serviceAccount.private_key.replace(/\\n/g, "\n"),
-        }),
-        projectId: serviceAccount.project_id,
-        storageBucket,
-      });
-      credentialSource = "gac-file";
-      projectId = serviceAccount.project_id;
-      if (!initLogged) {
-        console.log("[firebaseAdmin] Initialized using gac-file:", absolutePath);
-        initLogged = true;
-      }
-      return adminApp;
-    } catch (e) {
-      if (e instanceof FirebaseAdminInitError) throw e;
-      const hint = e instanceof Error ? e.message : String(e);
-      throw new FirebaseAdminInitError(
-        "Failed to initialize Firebase Admin from GOOGLE_APPLICATION_CREDENTIALS.",
-        "gac-file",
-        hint
-      );
-    }
-  }
-
   const envProjectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const rawKey = process.env.FIREBASE_PRIVATE_KEY;
@@ -101,6 +56,7 @@ function getApp(): App {
       }
       return adminApp;
     } catch (e) {
+      if (e instanceof FirebaseAdminInitError) throw e;
       const hint = e instanceof Error ? e.message : String(e);
       throw new FirebaseAdminInitError(
         "Failed to initialize Firebase Admin from env vars.",
@@ -110,14 +66,59 @@ function getApp(): App {
     }
   }
 
+  const gacPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (gacPath) {
+    const absolutePath = path.isAbsolute(gacPath) ? gacPath : path.resolve(process.cwd(), gacPath);
+    try {
+      const raw = fs.readFileSync(absolutePath, "utf8");
+      const serviceAccount = JSON.parse(raw) as {
+        project_id?: string;
+        client_email?: string;
+        private_key?: string;
+      };
+      if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
+        throw new FirebaseAdminInitError(
+          "Service account JSON missing project_id, client_email, or private_key.",
+          "gac-file",
+          "Check the JSON file contents."
+        );
+      }
+      const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || undefined;
+      adminApp = initializeApp({
+        credential: cert({
+          projectId: serviceAccount.project_id,
+          clientEmail: serviceAccount.client_email,
+          privateKey: serviceAccount.private_key.replace(/\\n/g, "\n"),
+        }),
+        projectId: serviceAccount.project_id,
+        storageBucket,
+      });
+      credentialSource = "gac-file";
+      projectId = serviceAccount.project_id;
+      if (!initLogged) {
+        console.log("[firebaseAdmin] Initialized using gac-file (GOOGLE_APPLICATION_CREDENTIALS)");
+        initLogged = true;
+      }
+      return adminApp;
+    } catch (e) {
+      if (e instanceof FirebaseAdminInitError) throw e;
+      const hint = e instanceof Error ? e.message : String(e);
+      throw new FirebaseAdminInitError(
+        "Failed to initialize Firebase Admin from GOOGLE_APPLICATION_CREDENTIALS (file not found or invalid). For Netlify/production use FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY instead.",
+        "gac-file",
+        hint
+      );
+    }
+  }
+
   const missing: string[] = [];
-  if (!envProjectId) missing.push("FIREBASE_PROJECT_ID (or NEXT_PUBLIC_FIREBASE_PROJECT_ID)");
+  if (!envProjectId) missing.push("FIREBASE_PROJECT_ID");
   if (!clientEmail) missing.push("FIREBASE_CLIENT_EMAIL");
   if (!rawKey?.trim()) missing.push("FIREBASE_PRIVATE_KEY");
   throw new FirebaseAdminInitError(
-    `Firebase Admin not configured. Missing: ${missing.join(", ")}. Set these or GOOGLE_APPLICATION_CREDENTIALS.`,
+    `Firebase Admin not configured. Missing: ${missing.join(", ")}. On Netlify set these env vars and do not use GOOGLE_APPLICATION_CREDENTIALS.`,
     "none",
-    "Restart dev server after changing .env.local"
+    "Restart dev server or redeploy after changing env."
   );
 }
 
