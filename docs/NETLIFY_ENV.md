@@ -1,5 +1,16 @@
 # Netlify: Firebase env vars
 
+## Подключение проекта к Netlify (CLI)
+
+1. Установи зависимости: `npm install`
+2. Привяжи папку к сайту Netlify: `npm run netlify:link`  
+   (или `npx netlify link`) — выбери team, затем существующий site или создай новый.
+3. Локальный запуск в режиме Netlify (с env из Netlify): `npm run netlify:dev`
+
+Переменные окружения для продакшена задаются в Netlify UI (Site settings → Environment variables). После `netlify link` их можно просматривать через дашборд.
+
+---
+
 On Netlify there is no local filesystem for `GOOGLE_APPLICATION_CREDENTIALS`. Use **environment variables** for the Admin SDK. Client SDK needs `NEXT_PUBLIC_*` at **build time**.
 
 ## Client SDK (frontend Auth / Firestore)

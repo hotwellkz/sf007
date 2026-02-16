@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { X, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -17,6 +18,7 @@ export function AuthGateModal({ open, onClose }: AuthGateModalProps) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const { signUpWithEmail, signInWithGoogle } = useAuth();
 
   useEffect(() => {
@@ -35,6 +37,14 @@ export function AuthGateModal({ open, onClose }: AuthGateModalProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  useEffect(() => {
+    if (open) {
+      const t = requestAnimationFrame(() => setMounted(true));
+      return () => cancelAnimationFrame(t);
+    }
+    setMounted(false);
+  }, [open]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -64,25 +74,19 @@ export function AuthGateModal({ open, onClose }: AuthGateModalProps) {
     }
   }, [signInWithGoogle, onClose]);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    if (open) {
-      const t = requestAnimationFrame(() => setMounted(true));
-      return () => cancelAnimationFrame(t);
-    }
-    setMounted(false);
-  }, [open]);
-
   if (!open) return null;
 
-  return (
-    <div
-      className={`${authGateStyles.overlay} transition-opacity duration-200 ${mounted ? "opacity-100" : "opacity-0"}`}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="auth-gate-title"
-    >
+  const modalContent = (
+    <>
       <div
+        className={`${authGateStyles.overlay} transition-opacity duration-200 ${mounted ? "opacity-100" : "opacity-0"}`}
+        onClick={onClose}
+        aria-hidden
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-gate-title"
         className={`${authGateStyles.modal} transition-transform duration-200 ${mounted ? "scale-100" : "scale-[0.98]"}`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -92,44 +96,44 @@ export function AuthGateModal({ open, onClose }: AuthGateModalProps) {
           className={authGateStyles.closeBtn}
           aria-label="Close"
         >
-          <X className="h-5 w-5 text-slate-600" />
+          <X className="h-5 w-5" />
         </button>
 
         <div className={authGateStyles.grid}>
-          {/* Left: blue promo block */}
+          {/* Left: blue promo panel */}
           <div className={authGateStyles.left}>
             <h2 className={authGateStyles.leftTitle}>
-              StockForge Top Picks vs. S&P 500
+              StockForge Best Stocks* vs. S&P 500
             </h2>
             <p className={authGateStyles.leftSub}>
-              Our AI-driven picks aim to outperform broad indexes over time. Past
-              performance is not a guarantee of future results.
+              The AI-powered strategy generated a return of +XXX% vs. +YYY% of the benchmark in the same period.
             </p>
             <div className={authGateStyles.chartWrap}>
-              <p className={authGateStyles.chartTitle}>Performance (backtest)</p>
-              <ChartMock />
-              <div className={authGateStyles.legend}>
-                <span className={authGateStyles.dotA} aria-hidden />
-                <span>StockForge Top Picks</span>
-                <span className={authGateStyles.dotB} aria-hidden />
-                <span>S&P 500</span>
+              <div className={authGateStyles.chartInner}>
+                <ChartMock />
               </div>
             </div>
-            <p className={authGateStyles.chartNote}>
-              Backtested results. Not financial advice. Your capital is at risk.
+            <div className={authGateStyles.legend}>
+              <span className={authGateStyles.legendDotA} aria-hidden />
+              <span>StockForge Best Stocks</span>
+              <span className={authGateStyles.legendDotB} aria-hidden />
+              <span>S&P 500</span>
+            </div>
+            <p className={authGateStyles.footnote}>
+              *Strategy description text in small font, similar density to the reference. Keep under 5 lines, allow scrolling if needed. Backtested results. Not financial advice. Your capital is at risk.
             </p>
           </div>
 
-          {/* Right: form */}
+          {/* Right: form panel */}
           <div className={authGateStyles.right}>
-            <h1 id="auth-gate-title" className={authGateStyles.h1}>
-              Get Today&apos;s Top 10 Stock Ideas — Free
+            <h1 id="auth-gate-title" className={authGateStyles.rightHeader}>
+              Get the Top 10 Stocks to Buy for FREE
             </h1>
-            <p className={authGateStyles.h2}>
-              Receive our daily Top 10 ranking, powered by StockForge AI.
+            <p className={authGateStyles.rightSubheader}>
+              Receive every day our Top 10 stocks ranking, powered by Artificial Intelligence
             </p>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} className={authGateStyles.form}>
               <label htmlFor="auth-gate-email" className={authGateStyles.fieldLabel}>
                 Email
               </label>
@@ -232,6 +236,8 @@ export function AuthGateModal({ open, onClose }: AuthGateModalProps) {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
+
+  return createPortal(modalContent, document.body);
 }

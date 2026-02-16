@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { getTopStocks, getTradeIdeas } from "@/lib/api";
+import { getTopStocks, getTradeIdeas, getTopStocksPreview } from "@/lib/api";
 import type { RankingApiResponse, RankingRow } from "@/lib/types";
 import { rankingResponseToRows } from "@/lib/ranking-mapping";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -12,6 +12,8 @@ import { CountryChips } from "../country-chips";
 type TabId = "stocks" | "etfs" | "trade-ideas" | "sectors" | "industries";
 
 const HOME_PREVIEW_ROWS = 5;
+const PREVIEW_CACHE_KEY = "homepage-preview-stocks";
+const PREVIEW_CACHE_TTL_MS = 10 * 60 * 1000;
 
 function formatRankingDate(): string {
   const d = new Date();
@@ -22,6 +24,29 @@ function formatRankingDate(): string {
   });
 }
 
+function getCachedPreview(): RankingRow[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(PREVIEW_CACHE_KEY);
+    if (!raw) return null;
+    const { items, timestamp } = JSON.parse(raw) as { items: RankingRow[]; timestamp: number };
+    if (!Array.isArray(items) || items.length === 0) return null;
+    if (Date.now() - timestamp > PREVIEW_CACHE_TTL_MS) return null;
+    return items;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedPreview(items: RankingRow[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(PREVIEW_CACHE_KEY, JSON.stringify({ items, timestamp: Date.now() }));
+  } catch {
+    // ignore
+  }
+}
+
 export function RankingSection() {
   const [tab, setTab] = useState<TabId>("stocks");
   const [rows, setRows] = useState<RankingRow[]>([]);
@@ -29,11 +54,13 @@ export function RankingSection() {
   const [error, setError] = useState<string | null>(null);
   const [dateLabel] = useState(formatRankingDate());
   const [market, setMarket] = useState("usa");
+  const [usingCachedPreview, setUsingCachedPreview] = useState(false);
 
   const fetchData = useCallback(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setUsingCachedPreview(false);
 
     const date = new Date().toISOString().slice(0, 10);
 
@@ -46,9 +73,27 @@ export function RankingSection() {
     };
 
     if (tab === "stocks") {
-      getTopStocks(date, "stock")
-        .then((data) => done(data, null))
-        .catch((e) => done(null, e.message || "Failed to load"));
+      getTopStocksPreview({ market: "US", tab: "popular", source: "auto" })
+        .then((data) => {
+          if (cancelled) return;
+          setRows(data.items);
+          setError(null);
+          setCachedPreview(data.items);
+          setLoading(false);
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          const cached = getCachedPreview();
+          if (cached && cached.length > 0) {
+            setRows(cached);
+            setError(null);
+            setUsingCachedPreview(true);
+          } else {
+            setRows([]);
+            setError(e.message || "Failed to load");
+          }
+          setLoading(false);
+        });
     } else if (tab === "etfs") {
       getTopStocks(date, "etf")
         .then((data) => done(data, null))
@@ -79,6 +124,11 @@ export function RankingSection() {
           <SegmentTabs value={tab} onValueChange={(v) => setTab(v as TabId)} />
         </div>
 
+        {usingCachedPreview && (
+          <p className="mt-4 text-center text-sm text-amber-700" role="status">
+            Showing previously loaded data. Retry to fetch latest.
+          </p>
+        )}
         <div className="mt-6">
           <RankingCard
             data={rows}

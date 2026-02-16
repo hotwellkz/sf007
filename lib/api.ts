@@ -88,6 +88,40 @@ export async function getTopStocksUnified(
   return data as TopStocksResponse;
 }
 
+export type TopStocksPreviewParams = {
+  market?: string;
+  tab?: string;
+  source?: TopStocksSource;
+  asOfDate?: string;
+};
+
+/**
+ * Fetch exactly 5 items for homepage preview. Uses source=auto by default (API with DB fallback on rate limit).
+ */
+export async function getTopStocksPreview(
+  params?: TopStocksPreviewParams
+): Promise<TopStocksResponse> {
+  const search = new URLSearchParams();
+  search.set("market", params?.market ?? "US");
+  search.set("tab", params?.tab ?? "popular");
+  search.set("source", params?.source ?? "auto");
+  if (params?.asOfDate) search.set("asOfDate", params.asOfDate);
+  const base = getApiBase();
+  const url = base
+    ? `${base}/api/top-stocks-preview?${search}`
+    : `/api/top-stocks-preview?${search}`;
+  const res = await fetch(url);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (data?.error as string) || res.statusText || "Request failed";
+    throw new Error(msg);
+  }
+  if (!data.ok || !Array.isArray(data.items)) {
+    throw new Error((data?.error as string) || "Invalid response");
+  }
+  return data as TopStocksResponse;
+}
+
 export async function getStockDetails(ticker: string, date?: string) {
   const params = new URLSearchParams({ ticker });
   if (date) params.set("date", date);

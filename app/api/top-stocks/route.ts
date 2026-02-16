@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { getFirestore, getStorageBucket, FirebaseAdminInitError } from "@/lib/firebaseAdmin";
 import { getAppConfig } from "@/lib/top-stocks/config";
-import { snapshotDocToRow } from "@/lib/top-stocks/normalize";
+import { getItemsFromDb } from "@/lib/top-stocks/db";
 import { rankingResponseToRows } from "@/lib/ranking-mapping";
 import { rowHash } from "@/lib/csv/hash";
 import { upsertSnapshotItem } from "@/lib/firestore/bulkUpsert";
@@ -50,17 +50,6 @@ async function fetchRankingApi(
     throw e;
   }
   return data as RankingApiResponse;
-}
-
-/** Read items from Firestore snapshots/{asOfDate}/items, normalize and sort. */
-async function getItemsFromDb(asOfDate: string): Promise<RankingRow[]> {
-  const db = getFirestore();
-  const itemsRef = db.collection("snapshots").doc(asOfDate).collection("items");
-  const snap = await itemsRef.limit(MAX_ITEMS + 50).get();
-  const docs = snap.docs.map((d) => ({ id: d.id, data: d.data() }));
-  const rows = docs.map((d, i) => snapshotDocToRow(d.id, d.data, i + 1));
-  rows.sort((a, b) => (b.aiscore !== a.aiscore ? b.aiscore - a.aiscore : a.rank - b.rank));
-  return rows.slice(0, MAX_ITEMS).map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
 /** Cache API response into Firestore snapshots/{asOfDate}/items. */
@@ -116,7 +105,7 @@ export async function GET(request: NextRequest) {
         : config.defaultAsOfDate || today();
 
     if (dataSource === "db") {
-      const items = await getItemsFromDb(asOfDate);
+      const items = await getItemsFromDb(asOfDate, MAX_ITEMS);
       return NextResponse.json({
         ok: true,
         sourceUsed: "db" as const,
@@ -153,7 +142,7 @@ export async function GET(request: NextRequest) {
 
     if (dataSource === "auto") {
       try {
-        const itemsFromDb = await getItemsFromDb(asOfDate);
+        const itemsFromDb = await getItemsFromDb(asOfDate, MAX_ITEMS);
         if (itemsFromDb.length > 0) {
           return NextResponse.json({
             ok: true,
@@ -208,7 +197,21 @@ export async function GET(request: NextRequest) {
         { status: 503 }
       );
     }
-    const message = e instanceof Error ? e.message : "Internal server error";
+    const message = e instanceof Error ? e.message : String(e);
+    const isAuthError =
+      message.includes("UNAUTHENTICATED") ||
+      message.includes("invalid authentication credentials") ||
+      (e as { code?: number })?.code === 16;
+    if (isAuthError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Firebase Admin credentials invalid or not configured.",
+          hint: "Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY (or GOOGLE_APPLICATION_CREDENTIALS locally). Restart or redeploy.",
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
