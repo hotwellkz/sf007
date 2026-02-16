@@ -182,6 +182,23 @@ function RankingsContent() {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    if (
+      process.env.NODE_ENV === "development" &&
+      sourceUsed === "db" &&
+      rows.length > 0
+    ) {
+      const sample = rows[0];
+      console.log("[rankings] DB sample row:", {
+        ticker: sample.ticker,
+        country: sample.country,
+        countryCode: sample.countryCode,
+        volume: sample.volume,
+        companyName: sample.companyName ?? "(empty)",
+      });
+    }
+  }, [sourceUsed, rows]);
+
   const countryOptions = useMemo(() => {
     const set = new Set<string>();
     for (const r of rows) {
@@ -302,7 +319,7 @@ function RankingsContent() {
                 ))}
                 {sourceUsed && (
                   <span className="ml-2 text-xs text-gray-500">
-                    (using: {sourceUsed})
+                    using: {sourceUsed}
                   </span>
                 )}
               </div>

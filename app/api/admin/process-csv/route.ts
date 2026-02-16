@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, type DocumentSnapshot } from "firebase-admin/firestore";
 import { parse } from "csv-parse";
 import { requireAdmin } from "@/lib/api/adminAuth";
 import { getFirestore, getStorageBucket, FirebaseAdminInitError } from "@/lib/firebaseAdmin";
@@ -66,13 +66,14 @@ export async function POST(request: NextRequest) {
     const sessionData = sessionSnap.data();
     const asOfDate = sessionData?.asOfDate as string;
 
-    const filesSnap = fileId
-      ? await sessionRef.collection("files").doc(fileId).get()
-      : await sessionRef.collection("files").where("status", "==", "uploaded").get();
-
-    const filesToProcess = fileId
-      ? (filesSnap.exists ? [filesSnap] : [])
-      : filesSnap.docs;
+    let filesToProcess: DocumentSnapshot[];
+    if (fileId) {
+      const docSnap = await sessionRef.collection("files").doc(fileId).get();
+      filesToProcess = docSnap.exists ? [docSnap] : [];
+    } else {
+      const querySnap = await sessionRef.collection("files").where("status", "==", "uploaded").get();
+      filesToProcess = querySnap.docs;
+    }
 
     if (filesToProcess.length === 0) {
       return jsonErr(fileId ? "File not found" : "No uploaded files to process", 400);
